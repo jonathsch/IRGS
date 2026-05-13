@@ -48,6 +48,10 @@ class Scene:
 
         if os.path.exists(os.path.join(args.source_path, "sparse")):
             scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval)
+        elif (os.path.exists(os.path.join(args.source_path, "transforms.json"))
+              and not os.path.exists(os.path.join(args.source_path, "transforms_train.json"))):
+            print("Found transforms.json + (sparse_pc.ply); using NerfTransformsPly loader")
+            scene_info = sceneLoadTypeCallbacks["NerfTransformsPly"](args.source_path, args.white_background, args.eval)
         elif os.path.exists(os.path.join(args.source_path, "transforms_train.json")):
             if "blender_LDR" in args.source_path:
                 print("Found keyword blender_LDR, assuming Stanford ORB data set!")

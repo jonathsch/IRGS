@@ -226,7 +226,7 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
                            ply_path=ply_path)
     return scene_info
 
-def readCamerasFromTransforms(path, transformsfile, white_background, extension=".png"):
+def readCamerasFromTransforms(path, transformsfile, white_background, extension=".png", flip_y_z=True):
     cam_infos = []
 
     with open(os.path.join(path, transformsfile)) as json_file:
@@ -249,7 +249,8 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
             # NeRF 'transform_matrix' is a camera-to-world transform
             c2w = np.array(frame["transform_matrix"])
             # change from OpenGL/Blender camera axes (Y up, Z back) to COLMAP (Y down, Z forward)
-            c2w[:3, 1:3] *= -1
+            if flip_y_z:
+                c2w[:3, 1:3] *= -1
 
             # get the world-to-camera transform and set R, T
             w2c = np.linalg.inv(c2w)
@@ -272,7 +273,7 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
             else:
                 mask = None
             arr = norm_data[:,:,:3] * norm_data[:, :, 3:4] + bg * (1 - norm_data[:, :, 3:4])
-            image = Image.fromarray(np.array(arr*255.0, dtype=np.byte), "RGB")
+            image = Image.fromarray(np.array(arr*255.0, dtype=np.uint8), "RGB")
             # #
             fo = fov2focal(fovx, image.size[0])
 
@@ -403,7 +404,7 @@ def readCamerasFromTransforms3(path, transformsfile, white_background, extension
             #     [0, 0, 1],
             # ])
             
-            image = Image.fromarray(np.array(arr*255.0, dtype=np.byte), "RGB")
+            image = Image.fromarray(np.array(arr*255.0, dtype=np.uint8), "RGB")
             fo = fov2focal(fovx, image.size[0])
 
             W,H = image.size[0], image.size[1]
@@ -496,7 +497,7 @@ def readCamerasFromTransforms2(path, transformsfile, white_background,
             bg = np.array([1, 1, 1]) if white_background else np.array([0, 0, 0])
             image = image * mask[..., None] + bg * (1 - mask[..., None])
 
-            image = Image.fromarray(np.array(image*255.0, dtype=np.byte), "RGB")
+            image = Image.fromarray(np.array(image*255.0, dtype=np.uint8), "RGB")
             fo = fov2focal(fovx, image.size[0])
 
             W,H = image.size[0], image.size[1]
@@ -557,9 +558,54 @@ def readStanfordORBInfo(path, white_background, eval, extension=".exr", benchmar
 
     return scene_info
 
+def readNerfTransformsWithPlyInfo(path, white_background, eval, llffhold=8,
+                                   transforms_file="transforms.json",
+                                   ply_file="sparse_pc.ply"):
+    """Loader for datasets shaped like:
+        <path>/transforms.json   (single file, NeRF-style; supports fl_x/w *or* camera_angle_x)
+        <path>/images/*.png
+        <path>/sparse_pc.ply     (pre-computed sparse point cloud, used for initialization)
+    Frames are split train/test by llffhold (every Nth frame is held out as test) when eval=True.
+    """
+    print(f"Reading transforms from {transforms_file}")
+    cam_infos = readCamerasFromTransforms(path, transforms_file, white_background,
+                                          extension=".png", flip_y_z=False)
+    cam_infos = sorted(cam_infos, key=lambda c: c.image_name)
+
+    if eval:
+        train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
+        test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold == 0]
+    else:
+        train_cam_infos = cam_infos
+        test_cam_infos = []
+
+    nerf_normalization = getNerfppNorm(train_cam_infos)
+
+    ply_path = os.path.join(path, ply_file)
+    if not os.path.exists(ply_path):
+        num_pts = 100_000
+        print(f"{ply_file} not found — generating random point cloud ({num_pts}).")
+        xyz = np.random.random((num_pts, 3)) * 2.6 - 1.3
+        shs = np.random.random((num_pts, 3)) / 255.0
+        storePly(ply_path, xyz, SH2RGB(shs) * 255)
+
+    try:
+        pcd = fetchPly(ply_path)
+    except Exception as e:
+        print(f"Failed to load {ply_path}: {e}")
+        pcd = None
+
+    return SceneInfo(point_cloud=pcd,
+                     train_cameras=train_cam_infos,
+                     test_cameras=test_cam_infos,
+                     nerf_normalization=nerf_normalization,
+                     ply_path=ply_path)
+
+
 sceneLoadTypeCallbacks = {
     "Colmap": readColmapSceneInfo,
     "Blender" : readNerfSyntheticInfo,
     "Synthetic4Relight": readSynthetic4RelightInfo,
     "StanfordORB": readStanfordORBInfo,
+    "NerfTransformsPly": readNerfTransformsWithPlyInfo,
 }
