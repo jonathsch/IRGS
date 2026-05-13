@@ -70,7 +70,7 @@ def find_eigen(min_ver=(3, 4, 0)):
             tar.extractall()
             tar.close()
 
-            eigen_path = TMP_EIGEN_DIR
+            eigen_path = os.path.abspath(TMP_EIGEN_DIR)
             os.remove(TMP_EIGEN_FILE)
         except:
             print('Download failed, failed to find Eigen')
