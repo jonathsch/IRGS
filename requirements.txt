@@ -1,15 +1,4 @@
 # Python 3.12 + PyTorch 2.9 + CUDA 12.8
-# Install PyTorch with:
-#   pip install --index-url https://download.pytorch.org/whl/cu128 \
-#       torch==2.9.* torchvision==0.24.* torchaudio==2.9.*
-# Then:
-#   pip install -r requirements.txt
-
---extra-index-url https://download.pytorch.org/whl/cu128
-
-torch==2.9.*
-torchvision==0.24.*
-torchaudio==2.9.*
 
 numpy>=1.26,<2.3
 pillow>=10.3
@@ -26,8 +15,9 @@ opencv-python>=4.9
 ninja
 matplotlib
 dearpygui
+kornia
 
-submodules/diff-surfel-rasterization
-submodules/simple-knn
-submodules/raytracing
-submodules/surfel_tracer
+# submodules/diff-surfel-rasterization
+# submodules/simple-knn
+# submodules/raytracing
+# submodules/surfel_tracer
