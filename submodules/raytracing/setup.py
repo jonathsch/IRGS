@@ -5,7 +5,7 @@ from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 _src_path = os.path.dirname(os.path.abspath(__file__))
 
 # ref: https://github.com/sxyu/sdf/blob/master/setup.py
-def find_eigen(min_ver=(3, 3, 0)):
+def find_eigen(min_ver=(3, 4, 0)):
     """Helper to find or download the Eigen C++ library"""
     import re, os
     try_paths = [
@@ -18,9 +18,9 @@ def find_eigen(min_ver=(3, 3, 0)):
     WORLD_VER_STR = "#define EIGEN_WORLD_VERSION"
     MAJOR_VER_STR = "#define EIGEN_MAJOR_VERSION"
     MINOR_VER_STR = "#define EIGEN_MINOR_VERSION"
-    EIGEN_WEB_URL = 'https://gitlab.com/libeigen/eigen/-/archive/3.3.7/eigen-3.3.7.tar.bz2'
+    EIGEN_WEB_URL = 'https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.bz2'
     TMP_EIGEN_FILE = 'tmp_eigen.tar.bz2'
-    TMP_EIGEN_DIR = 'eigen-3.3.7'
+    TMP_EIGEN_DIR = 'eigen-3.4.0'
     min_ver_str = '.'.join(map(str, min_ver))
 
     eigen_path = None

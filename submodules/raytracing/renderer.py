@@ -124,7 +124,7 @@ class OrbitCamera:
         self.center += 0.0005 * self.rot.as_matrix()[:3, :3] @ np.array([dx, dy, dz])
 
 
-@torch.cuda.amp.autocast(enabled=False)
+@torch.amp.autocast('cuda', enabled=False)
 def get_rays(poses, intrinsics, H, W, N=-1, error_map=None):
     ''' get rays
     Args:
