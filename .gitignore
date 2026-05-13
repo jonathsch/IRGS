@@ -16,3 +16,4 @@ snapshot_bw.dump
 total_results
 outputs
 composite/
+submodules/raytracing/eigen-3.4.0/
