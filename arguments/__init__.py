@@ -135,6 +135,8 @@ class OptimizationParams(ParamGroup):
         self.lambda_light = 0.0
         self.lambda_light_smooth = 0.0
 
+        self.use_gt_supervision = False
+
         self.init_roughness_value = 0.7
         self.init_base_color_value = 0.3
         self.init_metallic_value = 0.2

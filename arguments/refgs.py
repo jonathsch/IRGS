@@ -126,6 +126,7 @@ class OptimizationParams(ParamGroup):
         self.lambda_depth_smooth = 0.0
         self.lambda_mask_entropy = 0.0
 
+        self.use_gt_supervision = False
 
         # initial values
         self.init_roughness_value = 0.1

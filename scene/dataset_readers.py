@@ -13,7 +13,7 @@ import os
 import sys
 import math
 from PIL import Image
-from typing import NamedTuple
+from typing import NamedTuple, Optional
 from scene.colmap_loader import read_extrinsics_text, read_intrinsics_text, qvec2rotmat, \
     read_extrinsics_binary, read_intrinsics_binary, read_points3D_binary, read_points3D_text
 from utils.graphics_utils import getWorld2View2, focal2fov, fov2focal
@@ -42,6 +42,13 @@ class CameraInfo(NamedTuple):
     image_name: str
     width: int
     height: int
+    # GT material maps (None when dataset doesn't provide them).
+    # Loaded by _try_load_gt_maps if sibling folders exist next to images/.
+    albedo_gt:    Optional[np.ndarray] = None  # HxWx3 float32, LINEAR RGB [0,1]
+    normal_gt:    Optional[np.ndarray] = None  # HxWx3 float32, [-1,1], world-space
+    roughness_gt: Optional[np.ndarray] = None  # HxW float32, [0,1]
+    metallic_gt:  Optional[np.ndarray] = None  # HxW float32, [0,1]
+    depth_gt:     Optional[np.ndarray] = None  # HxW float32, metric depth
 
 class SceneInfo(NamedTuple):
     point_cloud: BasicPointCloud
@@ -226,6 +233,43 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
                            ply_path=ply_path)
     return scene_info
 
+def _try_load_gt_maps(root, image_name):
+    """Probe for sibling GT material folders next to images/ and load whichever exist.
+    Returns a dict with keys among {albedo, normal, roughness, metallic, depth} — only
+    entries whose corresponding file was found are present.
+    Decoding conventions match the bedroom dataset (verified by inspection):
+        albedo:    sRGB PNG  -> linear via srgb_to_rgb
+        normal:    PNG, (n+1)/2 encoding -> [-1,1] world-space
+        roughness: grayscale PNG, linear /255
+        metallic: grayscale PNG, linear /255
+        depth:     .npy float32 (no PNG variant supported here)
+    """
+    out = {}
+    # albedo
+    p = os.path.join(root, "albedo", image_name + ".png")
+    if os.path.exists(p):
+        a = np.array(Image.open(p).convert("RGB"), dtype=np.float32) / 255.0
+        out["albedo"] = srgb_to_rgb(a)
+    # normal
+    p = os.path.join(root, "normal", image_name + ".png")
+    if os.path.exists(p):
+        n = np.array(Image.open(p).convert("RGB"), dtype=np.float32) / 255.0
+        out["normal"] = (n * 2.0 - 1.0).astype(np.float32)
+    # roughness
+    p = os.path.join(root, "roughness", image_name + ".png")
+    if os.path.exists(p):
+        out["roughness"] = (np.array(Image.open(p).convert("L"), dtype=np.float32) / 255.0)
+    # metallic
+    p = os.path.join(root, "metallic", image_name + ".png")
+    if os.path.exists(p):
+        out["metallic"] = (np.array(Image.open(p).convert("L"), dtype=np.float32) / 255.0)
+    # depth
+    p = os.path.join(root, "depth", image_name + ".npy")
+    if os.path.exists(p):
+        out["depth"] = np.load(p).astype(np.float32)
+    return out
+
+
 def readCamerasFromTransforms(path, transformsfile, white_background, extension=".png", flip_y_z=True):
     cam_infos = []
 
@@ -289,8 +333,12 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
             FovX = fovx
             # #
             # For blender datasets, we consider its camera center offset is zero (ideal camera)
+            gt = _try_load_gt_maps(path, image_name)
             cam_infos.append(CameraInfo(uid=idx, R=R, T=T, K=K, FovY=FovY, FovX=FovX, image=image, mask=mask,
-                            image_path=image_path, image_name=image_name, width=image.size[0], height=image.size[1]))
+                            image_path=image_path, image_name=image_name, width=image.size[0], height=image.size[1],
+                            albedo_gt=gt.get("albedo"), normal_gt=gt.get("normal"),
+                            roughness_gt=gt.get("roughness"), metallic_gt=gt.get("metallic"),
+                            depth_gt=gt.get("depth")))
             
     return cam_infos
 

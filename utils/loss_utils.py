@@ -87,6 +87,77 @@ def tv_loss(depth):
     w_tv = torch.square(depth[..., :, 1:] - depth[..., :, :-1]).mean()
     return h_tv + w_tv
 
+
+# Hardcoded weights for the GT-material supervision terms. Activated together
+# by --use_gt_supervision. Tune here if any one term dominates / starves the
+# others. Magnitudes chosen to sit alongside existing image / normal lambdas.
+GT_SUPERVISION_LAMBDAS = {
+    "albedo":    0.5,
+    "normal":    0.1,
+    "roughness": 0.1,
+    "metallic":  0.1,
+    "depth":     0.05,
+}
+
+
+def _gt_supervision_loss(viewpoint_camera, render_pkg, iteration, opt, tb_dict):
+    """Sum of all active GT-material-map supervision losses, mutating tb_dict
+    for logging. Stage-agnostic: dispatches on which keys exist in render_pkg
+    so the same helper works from both calculate_loss (stage 1) and
+    calculate_loss2 (stage 2).
+
+    Returns 0.0 when the flag is off or no GT maps are present on the camera.
+    """
+    if not getattr(opt, "use_gt_supervision", False):
+        return 0.0
+    L = GT_SUPERVISION_LAMBDAS
+    total = 0.0
+
+    # Normal: cosine-similarity, gated on the same warmup as the existing
+    # rendered/surf normal-consistency loss to avoid fighting early geometry.
+    if viewpoint_camera.normal_gt is not None and "rend_normal" in render_pkg \
+            and iteration > opt.normal_loss_start:
+        n_pred = F.normalize(render_pkg["rend_normal"], dim=0)
+        n_gt   = F.normalize(viewpoint_camera.normal_gt,  dim=0)
+        l = (1.0 - (n_pred * n_gt).sum(0)).mean()
+        tb_dict["loss_normal_gt"] = l.item()
+        total = total + L["normal"] * l
+
+    # Depth: plain L1 in scene units.
+    if viewpoint_camera.depth_gt is not None and "surf_depth" in render_pkg:
+        l = l1_loss(render_pkg["surf_depth"], viewpoint_camera.depth_gt)
+        tb_dict["loss_depth_gt"] = l.item()
+        total = total + L["depth"] * l
+
+    # Albedo: compared in LINEAR RGB. Stage 2 emits base_color_linear; stage 1's
+    # render_volume / render_surfel emit base_color_map (also linear).
+    if viewpoint_camera.albedo_gt is not None:
+        pred = render_pkg.get("base_color_linear")
+        if pred is None:
+            pred = render_pkg.get("base_color_map")
+        if pred is not None:
+            l = l1_loss(pred, viewpoint_camera.albedo_gt)
+            tb_dict["loss_albedo_gt"] = l.item()
+            total = total + L["albedo"] * l
+
+    # Roughness: stage 2 emits "roughness", stage 1 emits "roughness_map".
+    if viewpoint_camera.roughness_gt is not None:
+        pred = render_pkg.get("roughness")
+        if pred is None:
+            pred = render_pkg.get("roughness_map")
+        if pred is not None:
+            l = l1_loss(pred, viewpoint_camera.roughness_gt)
+            tb_dict["loss_roughness_gt"] = l.item()
+            total = total + L["roughness"] * l
+
+    # Metallic: stage 1 only — render_ir (stage 2) does not emit metallic_map.
+    if viewpoint_camera.metallic_gt is not None and "metallic_map" in render_pkg:
+        l = l1_loss(render_pkg["metallic_map"], viewpoint_camera.metallic_gt)
+        tb_dict["loss_metallic_gt"] = l.item()
+        total = total + L["metallic"] * l
+
+    return total
+
 def calculate_loss(viewpoint_camera, pc, render_pkg, opt, iteration):
     tb_dict = {
         "num_points": pc.get_xyz.shape[0],
@@ -151,9 +222,11 @@ def calculate_loss(viewpoint_camera, pc, render_pkg, opt, iteration):
         loss = loss + opt.lambda_mask_entropy * loss_mask_entropy
     else:
         tb_dict["loss_mask_entropy"] = torch.zeros_like(loss)
-        
+
+    loss = loss + _gt_supervision_loss(viewpoint_camera, render_pkg, iteration, opt, tb_dict)
+
     tb_dict["loss"] = loss.item()
-    
+
     return loss, tb_dict
 
 def calculate_loss2(viewpoint_camera, pc, render_pkg, opt, iteration):
@@ -268,7 +341,9 @@ def calculate_loss2(viewpoint_camera, pc, render_pkg, opt, iteration):
         env = render_pkg["env_only"]
         loss_light_smooth = tv_loss(env)
         loss = loss + opt.lambda_light_smooth * loss_light_smooth
-    
+
+    loss = loss + _gt_supervision_loss(viewpoint_camera, render_pkg, iteration, opt, tb_dict)
+
     tb_dict["loss"] = loss.item()
-    
+
     return loss, tb_dict

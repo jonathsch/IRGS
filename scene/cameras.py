@@ -18,8 +18,10 @@ from utils.graphics_utils import getWorld2View2, getProjectionMatrix, getProject
 class Camera(nn.Module):
     def __init__(self, colmap_id, R, T, FoVx, FoVy, image, gt_alpha_mask,
                  image_name, uid,
-                 trans=np.array([0.0, 0.0, 0.0]), scale=1.0, 
+                 trans=np.array([0.0, 0.0, 0.0]), scale=1.0,
                  data_device = "cuda", HWK = None, mask = None, image_path=None,
+                 albedo_gt=None, normal_gt=None, roughness_gt=None,
+                 metallic_gt=None, depth_gt=None,
                  ):
         super(Camera, self).__init__()
 
@@ -43,7 +45,17 @@ class Camera(nn.Module):
             self.mask = mask.to(self.data_device)
         else:
             self.mask = None
-            
+
+        # Optional GT material maps (used when --use_gt_supervision is on
+        # and the dataset has them).
+        def _maybe(t): return t.to(self.data_device) if t is not None else None
+        self.albedo_gt    = _maybe(albedo_gt)
+        self.normal_gt    = _maybe(normal_gt)
+        self.roughness_gt = _maybe(roughness_gt)
+        self.metallic_gt  = _maybe(metallic_gt)
+        self.depth_gt     = _maybe(depth_gt)
+
+
         if image is not None:
             self.original_image = image.clamp(0.0, 1.0).to(self.data_device)
             self.image_width = self.original_image.shape[2]

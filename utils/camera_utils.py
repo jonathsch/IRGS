@@ -64,11 +64,30 @@ def loadCam(args, id, cam_info, resolution_scale):
     else:
         mask = None
 
-    return Camera(colmap_id=cam_info.uid, R=cam_info.R, T=cam_info.T, 
-                  FoVx=cam_info.FovX, FoVy=cam_info.FovY, 
+    def _to_gt_tensor(arr, interp):
+        if arr is None:
+            return None
+        if arr.shape[:2] != resolution[::-1]:
+            arr = cv2.resize(arr, resolution, interpolation=interp)
+        t = torch.from_numpy(np.ascontiguousarray(arr)).float()
+        return t.unsqueeze(0) if t.ndim == 2 else t.permute(2, 0, 1)
+
+    albedo_t    = _to_gt_tensor(cam_info.albedo_gt,    cv2.INTER_AREA)
+    roughness_t = _to_gt_tensor(cam_info.roughness_gt, cv2.INTER_LINEAR)
+    metallic_t  = _to_gt_tensor(cam_info.metallic_gt,  cv2.INTER_LINEAR)
+    depth_gt_t  = _to_gt_tensor(cam_info.depth_gt,     cv2.INTER_NEAREST)
+    normal_t    = _to_gt_tensor(cam_info.normal_gt,    cv2.INTER_LINEAR)
+    if normal_t is not None:
+        normal_t = normal_t / normal_t.norm(dim=0, keepdim=True).clamp_min(1e-6)
+
+    return Camera(colmap_id=cam_info.uid, R=cam_info.R, T=cam_info.T,
+                  FoVx=cam_info.FovX, FoVy=cam_info.FovY,
                   image=gt_image, gt_alpha_mask=loaded_mask,
-                  image_name=cam_info.image_name, uid=id, 
-                  data_device=args.data_device, HWK=HWK, mask=mask, image_path=cam_info.image_path)
+                  image_name=cam_info.image_name, uid=id,
+                  data_device=args.data_device, HWK=HWK, mask=mask, image_path=cam_info.image_path,
+                  albedo_gt=albedo_t, normal_gt=normal_t,
+                  roughness_gt=roughness_t, metallic_gt=metallic_t,
+                  depth_gt=depth_gt_t)
 
 def cameraList_from_camInfos(cam_infos, resolution_scale, args):
     camera_list = []
