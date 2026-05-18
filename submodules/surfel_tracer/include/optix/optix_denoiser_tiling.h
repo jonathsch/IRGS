@@ -1,28 +1,30 @@
 /*
- * Copyright (c) 2021 NVIDIA Corporation.  All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2019 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *  * Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- *  * Neither the name of NVIDIA CORPORATION nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
+ * modification, are permitted provided that the following conditions are met:
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS ``AS IS'' AND ANY
- * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
- * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ * list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ * this list of conditions and the following disclaimer in the documentation
+ * and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of the copyright holder nor the names of its
+ * contributors may be used to endorse or promote products derived from
+ * this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
@@ -30,8 +32,8 @@
 /// @author NVIDIA Corporation
 /// @brief  OptiX public API header
 
-#ifndef optix_denoiser_tiling_h
-#define optix_denoiser_tiling_h
+#ifndef OPTIX_DENOISER_TILING_H
+#define OPTIX_DENOISER_TILING_H
 
 #include <optix.h>
 
@@ -67,7 +69,8 @@ struct OptixUtilDenoiserImageTile
 /// if the pixelStrideInBytes member of the image is zero.
 /// Otherwise return pixelStrideInBytes from the image.
 ///
-/// \param[in]                  image Image containing the pixel stride
+/// \param[in] image              Image containing the pixel stride
+/// \param[in] pixelStrideInBytes Pixel stride in bytes
 ///
 inline OptixResult optixUtilGetPixelStride( const OptixImage2D& image, unsigned int& pixelStrideInBytes )
 {
@@ -76,6 +79,9 @@ inline OptixResult optixUtilGetPixelStride( const OptixImage2D& image, unsigned 
     {
         switch( image.format )
         {
+            case OPTIX_PIXEL_FORMAT_HALF1:
+                pixelStrideInBytes = 1 * sizeof( short );
+                break;
             case OPTIX_PIXEL_FORMAT_HALF2:
                 pixelStrideInBytes = 2 * sizeof( short );
                 break;
@@ -84,6 +90,9 @@ inline OptixResult optixUtilGetPixelStride( const OptixImage2D& image, unsigned 
                 break;
             case OPTIX_PIXEL_FORMAT_HALF4:
                 pixelStrideInBytes = 4 * sizeof( short );
+                break;
+            case OPTIX_PIXEL_FORMAT_FLOAT1:
+                pixelStrideInBytes = 1 * sizeof( float );
                 break;
             case OPTIX_PIXEL_FORMAT_FLOAT2:
                 pixelStrideInBytes = 2 * sizeof( float );
@@ -271,6 +280,7 @@ inline OptixResult optixUtilDenoiserInvokeTiled(
                                                                  tileWidth, tileHeight, normalTiles ) )
             return res;
     }
+
     std::vector<OptixUtilDenoiserImageTile> flowTiles;
     if( guideLayer->flow.data )
     {
@@ -278,6 +288,16 @@ inline OptixResult optixUtilDenoiserInvokeTiled(
         if( const OptixResult res = optixUtilDenoiserSplitImage( guideLayer->flow, dummyOutput,
                                                                  overlapWindowSizeInPixels,
                                                                  tileWidth, tileHeight, flowTiles ) )
+            return res;
+    }
+
+    std::vector<OptixUtilDenoiserImageTile> flowTrustTiles;
+    if( guideLayer->flowTrustworthiness.data )
+    {
+        OptixImage2D dummyOutput = guideLayer->flowTrustworthiness;
+        if( const OptixResult res = optixUtilDenoiserSplitImage( guideLayer->flowTrustworthiness, dummyOutput,
+                                                                 overlapWindowSizeInPixels,
+                                                                 tileWidth, tileHeight, flowTrustTiles ) )
             return res;
     }
 
@@ -301,6 +321,7 @@ inline OptixResult optixUtilDenoiserInvokeTiled(
             layer.output = ( tiles[l] )[t].output;
             if( layers[l].previousOutput.data )
                 layer.previousOutput = ( prevTiles[l] )[t].input;
+            layer.type = layers[l].type;
             tlayers.push_back( layer );
         }
 
@@ -313,6 +334,9 @@ inline OptixResult optixUtilDenoiserInvokeTiled(
 
         if( guideLayer->flow.data )
             gl.flow = flowTiles[t].input;
+
+        if( guideLayer->flowTrustworthiness.data )
+            gl.flowTrustworthiness = flowTrustTiles[t].input;
 
         if( guideLayer->previousOutputInternalGuideLayer.data )
             gl.previousOutputInternalGuideLayer = internalGuideLayerTiles[t].input;
@@ -330,10 +354,10 @@ inline OptixResult optixUtilDenoiserInvokeTiled(
     return OPTIX_SUCCESS;
 }
 
-/*@}*/  // end group optix_utilities
+/**@}*/  // end group optix_utilities
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // __optix_optix_stack_size_h__
+#endif  // OPTIX_DENOISER_TILING_H 

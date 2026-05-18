@@ -1,28 +1,30 @@
 /*
- * Copyright (c) 2021 NVIDIA Corporation.  All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2019 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *  * Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- *  * Neither the name of NVIDIA CORPORATION nor the names of its
- *    contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
+ * modification, are permitted provided that the following conditions are met:
  *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS ``AS IS'' AND ANY
- * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
- * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ * list of conditions and the following disclaimer.
+ *
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ * this list of conditions and the following disclaimer in the documentation
+ * and/or other materials provided with the distribution.
+ *
+ * 3. Neither the name of the copyright holder nor the names of its
+ * contributors may be used to endorse or promote products derived from
+ * this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
@@ -30,8 +32,8 @@
 /// @author NVIDIA Corporation
 /// @brief  OptiX public API header
 
-#ifndef __optix_optix_stack_size_h__
-#define __optix_optix_stack_size_h__
+#ifndef OPTIX_OPTIX_STACK_SIZE_H
+#define OPTIX_OPTIX_STACK_SIZE_H
 
 #include "optix.h"
 
@@ -49,13 +51,15 @@ extern "C" {
 /// Retrieves direct and continuation stack sizes for each program in the program group and accumulates the upper bounds
 /// in the correponding output variables based on the semantic type of the program. Before the first invocation of this
 /// function with a given instance of #OptixStackSizes, the members of that instance should be set to 0.
-inline OptixResult optixUtilAccumulateStackSizes( OptixProgramGroup programGroup, OptixStackSizes* stackSizes )
+/// If the programs rely on external functions, passing the current pipeline will consider these as well. Otherwise, a null pointer
+/// can be passed instead. When external functions are present, a warning will be issued for these cases.
+inline OptixResult optixUtilAccumulateStackSizes( OptixProgramGroup programGroup, OptixStackSizes* stackSizes, OptixPipeline pipeline )
 {
     if( !stackSizes )
         return OPTIX_ERROR_INVALID_VALUE;
 
     OptixStackSizes localStackSizes;
-    OptixResult     result = optixProgramGroupGetStackSize( programGroup, &localStackSizes );
+    OptixResult     result = optixProgramGroupGetStackSize( programGroup, &localStackSizes, pipeline );
     if( result != OPTIX_SUCCESS )
         return result;
 
@@ -260,6 +264,9 @@ inline OptixResult optixUtilComputeStackSizesCssCCTree( const OptixStackSizes* s
 /// groups, and compute the maximas of the stack size requirements per array.
 ///
 /// See programming guide for an explanation of the formula.
+///
+/// If the programs rely on external functions, passing the current pipeline will consider these as well. Otherwise, a null pointer
+/// can be passed instead. When external functions are present, a warning will be issued for these cases.
 inline OptixResult optixUtilComputeStackSizesSimplePathTracer( OptixProgramGroup        programGroupRG,
                                                                OptixProgramGroup        programGroupMS1,
                                                                const OptixProgramGroup* programGroupCH1,
@@ -269,7 +276,8 @@ inline OptixResult optixUtilComputeStackSizesSimplePathTracer( OptixProgramGroup
                                                                unsigned int             programGroupCH2Count,
                                                                unsigned int* directCallableStackSizeFromTraversal,
                                                                unsigned int* directCallableStackSizeFromState,
-                                                               unsigned int* continuationStackSize )
+                                                               unsigned int* continuationStackSize,
+                                                               OptixPipeline pipeline )
 {
     if( !programGroupCH1 && ( programGroupCH1Count > 0 ) )
         return OPTIX_ERROR_INVALID_VALUE;
@@ -279,25 +287,25 @@ inline OptixResult optixUtilComputeStackSizesSimplePathTracer( OptixProgramGroup
     OptixResult result;
 
     OptixStackSizes stackSizesRG = {};
-    result                       = optixProgramGroupGetStackSize( programGroupRG, &stackSizesRG );
+    result                       = optixProgramGroupGetStackSize( programGroupRG, &stackSizesRG, pipeline );
     if( result != OPTIX_SUCCESS )
         return result;
 
     OptixStackSizes stackSizesMS1 = {};
-    result                        = optixProgramGroupGetStackSize( programGroupMS1, &stackSizesMS1 );
+    result                        = optixProgramGroupGetStackSize( programGroupMS1, &stackSizesMS1, pipeline );
     if( result != OPTIX_SUCCESS )
         return result;
 
     OptixStackSizes stackSizesCH1 = {};
     for( unsigned int i = 0; i < programGroupCH1Count; ++i )
     {
-        result = optixUtilAccumulateStackSizes( programGroupCH1[i], &stackSizesCH1 );
+        result = optixUtilAccumulateStackSizes( programGroupCH1[i], &stackSizesCH1, pipeline );
         if( result != OPTIX_SUCCESS )
             return result;
     }
 
     OptixStackSizes stackSizesMS2 = {};
-    result                        = optixProgramGroupGetStackSize( programGroupMS2, &stackSizesMS2 );
+    result                        = optixProgramGroupGetStackSize( programGroupMS2, &stackSizesMS2, pipeline );
     if( result != OPTIX_SUCCESS )
         return result;
 
@@ -305,7 +313,7 @@ inline OptixResult optixUtilComputeStackSizesSimplePathTracer( OptixProgramGroup
     memset( &stackSizesCH2, 0, sizeof( OptixStackSizes ) );
     for( unsigned int i = 0; i < programGroupCH2Count; ++i )
     {
-        result = optixUtilAccumulateStackSizes( programGroupCH2[i], &stackSizesCH2 );
+        result = optixUtilAccumulateStackSizes( programGroupCH2[i], &stackSizesCH2, pipeline );
         if( result != OPTIX_SUCCESS )
             return result;
     }
@@ -328,10 +336,10 @@ inline OptixResult optixUtilComputeStackSizesSimplePathTracer( OptixProgramGroup
     return OPTIX_SUCCESS;
 }
 
-/*@}*/  // end group optix_utilities
+/**@}*/  // end group optix_utilities
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // __optix_optix_stack_size_h__
+#endif  // OPTIX_OPTIX_STACK_SIZE_H

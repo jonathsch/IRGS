@@ -77,7 +77,7 @@ add_library(optix_program OBJECT
 	src/optix/gaussiantrace_intersection_test.cu
 )
 
-set_target_properties(optix_program PROPERTIES CUDA_PTX_COMPILATION ON CUDA_ARCHITECTURES OFF)
+set_target_properties(optix_program PROPERTIES CUDA_PTX_COMPILATION ON CUDA_ARCHITECTURES "75-virtual")
 target_compile_definitions(optix_program PUBLIC ${SURFELTRACER_DEFINITIONS} -DTCNN_MIN_GPU_ARCH=0)
 target_compile_options(optix_program PUBLIC "--expt-relaxed-constexpr")
 
